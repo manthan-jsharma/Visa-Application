@@ -1,4 +1,4 @@
-import mongoose from "mongoose"
+import mongoose from "mongoose";
 
 const evaluationSchema = new mongoose.Schema({
   fullName: String,
@@ -10,10 +10,13 @@ const evaluationSchema = new mongoose.Schema({
   summary: String,
   maxScoreCap: Number,
   partnerApiKey: String,
+  criteriaAnalysis: { type: Object },
+  conclusion: { type: Object },
+  language: { type: String, default: "en" },
   createdAt: {
     type: Date,
     default: Date.now,
   },
-})
+});
 
-export default mongoose.model("Evaluation", evaluationSchema)
+export default mongoose.model("Evaluation", evaluationSchema);

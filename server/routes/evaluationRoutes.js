@@ -1,9 +1,11 @@
-import express from "express"
-import multer from "multer"
-import { generateEvaluation } from "../services/evaluationService.js"
-
-const router = express.Router()
-const upload = multer({ dest: "uploads/" })
+import express from "express";
+import multer from "multer";
+import { generateEvaluation } from "../services/evaluationService.js";
+import { sendEvaluationEmail } from "../services/emailService.js";
+import { PDFParse } from "pdf-parse";
+const router = express.Router();
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 // Country and Visa Type Config
 const VISA_CONFIG = {
@@ -28,7 +30,11 @@ const VISA_CONFIG = {
     types: ["Work Visa", "Student Visa", "EU Blue Card"],
     documents: {
       "Work Visa": ["resume", "job_offer", "degree"],
-      "Student Visa": ["acceptance_letter", "financial_proof", "language_proof"],
+      "Student Visa": [
+        "acceptance_letter",
+        "financial_proof",
+        "language_proof",
+      ],
       "EU Blue Card": ["resume", "degree", "job_contract"],
     },
   },
@@ -40,21 +46,43 @@ const VISA_CONFIG = {
       "Work Holiday": ["passport", "police_clearance", "medical"],
     },
   },
-}
+};
 
 // GET: Visa Configuration
 router.get("/config", (req, res) => {
-  res.json(VISA_CONFIG)
-})
+  res.json(VISA_CONFIG);
+});
 
 // POST: Submit Evaluation
 router.post("/submit", upload.array("documents"), async (req, res) => {
   try {
-    const { fullName, email, country, visaType, partnerApiKey } = req.body
+    console.log("Received form body:", req.body);
+    const { fullName, email, country, visaType, language } = req.body;
+    const partnerApiKey = req.headers["x-api-key"] || null;
 
     // Validate required fields
     if (!fullName || !email || !country || !visaType) {
-      return res.status(400).json({ error: "Missing required fields" })
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: "No resume file uploaded." });
+    }
+
+    const file = req.files[0];
+    let resumeText = "";
+
+    if (file.mimetype === "application/pdf") {
+      const pdfDataUint8Array = new Uint8Array(file.buffer);
+      const parser = new PDFParse({ data: pdfDataUint8Array });
+      const data = await parser.getText();
+      resumeText = data.text;
+    } else if (file.mimetype === "text/plain") {
+      resumeText = file.buffer.toString("utf8");
+    } else {
+      return res
+        .status(400)
+        .json({ error: "Invalid file type. Please upload a PDF or TXT file." });
     }
 
     // Generate evaluation score using AI
@@ -63,44 +91,46 @@ router.post("/submit", upload.array("documents"), async (req, res) => {
       email,
       country,
       visaType,
-      documents: req.files || [],
-      documentPaths: req.files?.map((f) => f.path) || [],
-    })
+      resumeText: resumeText,
+      language: language || "en",
+    });
 
     // Apply max score cap from environment
-    const MAX_CAP = Number.parseInt(process.env.MAX_SCORE_CAP || 85)
-    evaluation.score = Math.min(evaluation.score, MAX_CAP)
-    evaluation.maxScoreCap = MAX_CAP
-    evaluation.partnerApiKey = partnerApiKey || null
+    const MAX_CAP = Number.parseInt(process.env.MAX_SCORE_CAP || 85);
+    evaluation.score = Math.min(evaluation.score, MAX_CAP);
+    evaluation.maxScoreCap = MAX_CAP;
+    evaluation.partnerApiKey = partnerApiKey || null;
+    evaluation.language = language || "en";
+    evaluation.documents = req.files.map((f) => f.originalname);
 
     // Save to MongoDB
-    const newEvaluation = new (await import("../models/Evaluation.js")).default(evaluation)
-    await newEvaluation.save()
-
+    const newEvaluation = new (await import("../models/Evaluation.js")).default(
+      evaluation
+    );
+    await newEvaluation.save();
+    sendEvaluationEmail(newEvaluation.email, newEvaluation, language || "en");
     res.json({
       success: true,
-      evaluation: {
-        id: newEvaluation._id,
-        score: newEvaluation.score,
-        summary: newEvaluation.summary,
-      },
-    })
+      evaluation: newEvaluation.toObject(),
+    });
   } catch (error) {
-    console.error("Evaluation error:", error)
-    res.status(500).json({ error: "Evaluation failed", details: error.message })
+    console.error("Evaluation error:", error);
+    res
+      .status(500)
+      .json({ error: "Evaluation failed", details: error.message });
   }
-})
+});
 
 // GET: Get Evaluation by ID
 router.get("/:id", async (req, res) => {
   try {
-    const Evaluation = (await import("../models/Evaluation.js")).default
-    const evaluation = await Evaluation.findById(req.params.id)
-    if (!evaluation) return res.status(404).json({ error: "Not found" })
-    res.json(evaluation)
+    const Evaluation = (await import("../models/Evaluation.js")).default;
+    const evaluation = await Evaluation.findById(req.params.id);
+    if (!evaluation) return res.status(404).json({ error: "Not found" });
+    res.json(evaluation);
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ error: error.message });
   }
-})
+});
 
-export default router
+export default router;
