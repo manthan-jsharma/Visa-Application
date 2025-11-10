@@ -12,7 +12,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const whitelist = [
   "http://localhost:3000",
-  "https://visa-application-brown.vercel.app/",
+  "https://visa-application-brown.vercel.app",
 ];
 
 const corsOptions = {
