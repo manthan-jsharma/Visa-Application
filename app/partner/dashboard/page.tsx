@@ -1,6 +1,5 @@
 import { PartnerDashboard } from "@/components/PartnerDashboard";
 
-// This component just sets up the page layout
 export default function PartnerDashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50">
