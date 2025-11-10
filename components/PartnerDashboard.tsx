@@ -21,6 +21,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+const API_BASE_URL =
+  process.env.NODE_ENV === "production" ? process.env.NEXT_PUBLIC_API_URL : "";
+
 interface Lead {
   _id: string;
   fullName: string;
@@ -36,7 +39,6 @@ export function PartnerDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
   const [partnerName, setPartnerName] = useState("");
   const [newlyGeneratedKey, setNewlyGeneratedKey] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
@@ -52,19 +54,15 @@ export function PartnerDashboard() {
     setLeads([]);
 
     try {
-      const response = await fetch("/api/partners/evaluations", {
+      const response = await fetch(`${API_BASE_URL}/api/partners/evaluations`, {
         headers: {
           "x-api-key": apiKey,
         },
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch leads");
-      }
-
+      if (!response.ok) throw new Error(data.error || "Failed to fetch leads");
       setLeads(data);
+      localStorage.setItem("partnerApiKey", apiKey);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -82,31 +80,29 @@ export function PartnerDashboard() {
     setNewlyGeneratedKey("");
 
     try {
-      const response = await fetch("/api/partners/create", {
+      const response = await fetch(`${API_BASE_URL}/api/partners/create`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ name: partnerName }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(data.error || "Failed to create partner");
-      }
-
       setNewlyGeneratedKey(data.apiKey);
       setApiKey(data.apiKey);
       setPartnerName("");
+      localStorage.setItem("partnerApiKey", data.apiKey);
     } catch (err: any) {
       setCreateError(err.message);
     } finally {
       setCreateLoading(false);
     }
   };
+
   return (
-    <div className="w-full max-w-6xl">
+    <div className="w-full max-w-6xl space-y-6">
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle>New Partner? Create Your API Key</CardTitle>
@@ -132,22 +128,37 @@ export function PartnerDashboard() {
               <p className="text-red-600 text-sm mt-2">{createError}</p>
             )}
           </div>
-
           {newlyGeneratedKey && (
-            <div className="p-4 bg-green-50 border border-green-200 rounded-md">
-              <Label className="text-green-800">
-                Your New API Key (Save this!)
-              </Label>
-              <p className="font-mono bg-white p-2 rounded-md break-all">
-                {newlyGeneratedKey}
-              </p>
+            <div className="p-4 bg-green-50 border border-green-200 rounded-md space-y-4">
+              <div>
+                <Label className="text-green-800">
+                  Your New API Key (Save this!)
+                </Label>
+                <p className="font-mono bg-white p-2 rounded-md break-all">
+                  {newlyGeneratedKey}
+                </p>
+              </div>
+              <div>
+                <Label className="text-green-800">Your Embed Code</Label>
+                <p className="text-sm text-gray-600 mb-1">
+                  Copy and paste this HTML code into your website:
+                </p>
+                <p className="font-mono bg-white p-2 rounded-md break-all text-sm">
+                  {/* This will only work once you replace YOUR_WEBSITE.com with your live Vercel URL */}
+                  {`<iframe src="https://YOUR_WEBSITE.com/embed/${newlyGeneratedKey}" width="100%" height="800" frameborder="0"></iframe>`}
+                </p>
+              </div>
             </div>
           )}
         </CardContent>
       </Card>
-      <Card className="shadow-lg mb-6">
+
+      <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle>Partner Lead Dashboard</CardTitle>
+          <CardTitle>Partner Lead Dashboard (Login)</CardTitle>
+          <CardDescription>
+            Already have a key? Enter it here to see your leads.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -169,7 +180,6 @@ export function PartnerDashboard() {
         </CardContent>
       </Card>
 
-      {/* Results Table */}
       {leads.length > 0 && (
         <Card className="shadow-lg">
           <CardHeader>

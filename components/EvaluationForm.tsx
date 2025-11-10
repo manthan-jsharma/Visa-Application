@@ -20,8 +20,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { UploadIcon } from "lucide-react";
+import {
+  EvaluationResult,
+  type EvaluationResultData,
+} from "./EvaluationResult";
 
-// Define the structure for the config
+const API_BASE_URL =
+  process.env.NODE_ENV === "production" ? process.env.NEXT_PUBLIC_API_URL : "";
+
+interface EvaluationFormProps {
+  partnerKey?: string;
+}
+
+type ViewState = "form" | "loading" | "result";
+
 type VisaConfig = {
   [country: string]: {
     types: string[];
@@ -30,12 +42,12 @@ type VisaConfig = {
     };
   };
 };
-interface EvaluationFormProps {
-  onSubmit: (formData: FormData) => Promise<void>;
-  loading: boolean;
-}
 
-export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
+export function EvaluationForm({ partnerKey }: EvaluationFormProps) {
+  const [viewState, setViewState] = useState<ViewState>("form");
+  const [result, setResult] = useState<EvaluationResultData | null>(null);
+  const [error, setError] = useState("");
+
   const [formData, setFormData] = useState({
     fullName: "",
     email: "",
@@ -47,7 +59,7 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
   const [visaConfig, setVisaConfig] = useState<VisaConfig>({});
 
   useEffect(() => {
-    fetch("/api/evaluations/config")
+    fetch(`${API_BASE_URL}/api/evaluations/config`)
       .then((res) => res.json())
       .then((data) => {
         setVisaConfig(data);
@@ -63,51 +75,81 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
   }, []);
 
   const handleCountryChange = (country: string) => {
-    setFormData({
-      ...formData,
-      country: country,
-      visaType: "",
-    });
+    setFormData({ ...formData, country: country, visaType: "" });
   };
-
   const handleVisaTypeChange = (visaType: string) => {
     setFormData({ ...formData, visaType: visaType });
   };
-
   const handleLanguageChange = (language: string) => {
     setFormData({ ...formData, language: language });
   };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, documents: e.target.files });
   };
-
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setViewState("loading");
+    setError("");
+
     const submitData = new FormData();
     submitData.append("fullName", formData.fullName);
     submitData.append("email", formData.email);
     submitData.append("country", formData.country);
     submitData.append("visaType", formData.visaType);
     submitData.append("language", formData.language);
-
     if (formData.documents) {
       Array.from(formData.documents).forEach((doc) => {
         submitData.append("documents", doc);
       });
     }
-    onSubmit(submitData);
+
+    const headers: HeadersInit = {};
+    const storedKey = localStorage.getItem("partnerApiKey");
+
+    const finalKey = partnerKey || storedKey;
+
+    if (finalKey) {
+      headers["x-api-key"] = finalKey;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/evaluations/submit`, {
+        method: "POST",
+        body: submitData,
+        headers: headers,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Submission failed");
+      setResult(data.evaluation);
+      setViewState("result");
+    } catch (err: any) {
+      setError(err.message || "An unknown error occurred");
+      setViewState("form");
+    }
   };
 
+  const handleReset = () => {
+    setResult(null);
+    setViewState("form");
+  };
+
+  if (viewState === "result" && result) {
+    return (
+      <div className="w-full max-w-4xl">
+        <EvaluationResult result={result} onReset={handleReset} />
+      </div>
+    );
+  }
+
+  const loading = viewState === "loading";
   const requiredDocs =
     formData.country && formData.visaType
       ? visaConfig[formData.country]?.documents[formData.visaType] || []
       : [];
-
   const visaTypes = formData.country
     ? visaConfig[formData.country]?.types || []
     : [];
@@ -124,6 +166,11 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {error && (
+          <div className="text-red-600 bg-red-100 p-3 rounded-md mb-4">
+            <strong>Error:</strong> {error}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
@@ -131,7 +178,7 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
               <Input
                 id="fullName"
                 name="fullName"
-                placeholder="John Doe"
+                placeholder="Manthan Sharma"
                 required
                 value={formData.fullName}
                 onChange={handleChange}
@@ -144,7 +191,7 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
                 id="email"
                 name="email"
                 type="email"
-                placeholder="john.doe@example.com"
+                placeholder="Manthan@gmail.com"
                 required
                 value={formData.email}
                 onChange={handleChange}
@@ -152,8 +199,7 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
               />
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="space-y-2">
               <Label htmlFor="country">Country</Label>
               <Select
@@ -194,7 +240,6 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="language">Language</Label>
               <Select
@@ -209,14 +254,12 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
                 <SelectContent>
                   <SelectItem value="en">English</SelectItem>
                   <SelectItem value="es">Español</SelectItem>
-                  <SelectItem value="hi">hindi</SelectItem>
+                  <SelectItem value="hi">Hindi</SelectItem>
                   <SelectItem value="ru">Russian</SelectItem>
-                  {/* Add more languages here */}
                 </SelectContent>
               </Select>
             </div>
           </div>
-
           <div className="space-y-2">
             <Label htmlFor="resume">
               Upload Documents
@@ -257,7 +300,6 @@ export function EvaluationForm({ onSubmit, loading }: EvaluationFormProps) {
               </div>
             )}
           </div>
-
           <Button
             type="submit"
             className="w-full bg-purple-600 hover:bg-purple-700 text-white"
