@@ -1,19 +1,10 @@
-import nodemailer from "nodemailer";
+import sgMail from "@sendgrid/mail";
 import dotenv from "dotenv";
 
 dotenv.config();
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
-
-export const sendEvaluationEmail = async (toEmail, evaluation) => {
+export const sendEvaluationEmail = async (toEmail, evaluation, lang = "en") => {
   const htmlContent = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <p>Hi,</p>
@@ -28,22 +19,28 @@ export const sendEvaluationEmail = async (toEmail, evaluation) => {
         <p><strong>AI Summary:</strong> <em>"${evaluation.summary}"</em></p>
         <p>If you have any questions or need assistance understanding your evaluation, please don't hesitate to reach out. We're here to support you throughout this process.</p>
         <p style="font-size: 0.9em; color: #777;">
-          <strong>Note:</strong> OpenSphere is a technology company that provides visa application assistance. We are not a law firm and do not provide legal advice. For legal counsel, please consult with a licensed immigration attorney.
+          <strong>Note:</strong> ManthanSphere is a technology company that provides visa application assistance. We are not a law firm and do not provide legal advice. For legal counsel, please consult with a licensed immigration attorney.
         </p>
       </div>
     `;
 
-  const mailOptions = {
-    from: `"ManthanOpenSphere" <${process.env.EMAIL_USER}>`,
+  const msg = {
     to: toEmail,
+    from: {
+      email: "manthan.jsharma@gmail.com",
+      name: "Manthan",
+    },
     subject: "Your Visa Evaluation Report is Ready",
     html: htmlContent,
   };
 
   try {
-    await transporter.sendMail(mailOptions);
-    console.log(`Evaluation email sent to ${toEmail}`);
+    await sgMail.send(msg);
+    console.log(`Evaluation email sent to ${toEmail} in ${lang} via SendGrid`);
   } catch (error) {
-    console.error(`Error sending email to ${toEmail}:`, error);
+    console.error(`Error sending email to ${toEmail} via SendGrid:`, error);
+    if (error.response) {
+      console.error(error.response.body);
+    }
   }
 };
